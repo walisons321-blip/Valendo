@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+<title>Marcenaria 3D — GLB</title>
+<style>
+html,body{margin:0;height:100%;font-family:system-ui;background:#151515;color:#fff;overflow:hidden}#app{height:100%;display:grid;grid-template-rows:auto 1fr auto}header{padding:10px 12px;background:#222;display:flex;gap:8px;align-items:center;flex-wrap:wrap}button,label.btn{background:#f2f2f2;color:#111;border:0;border-radius:9px;padding:9px 11px;font-weight:700;font-size:14px}input[type=file]{display:none}#stage{position:relative;min-height:0}canvas{display:block;width:100%;height:100%}#panel{background:#222;padding:9px;display:grid;grid-template-columns:repeat(3,1fr);gap:7px}#panel label{font-size:11px;color:#bbb}#panel input{width:100%;box-sizing:border-box;margin-top:3px;padding:7px;border:0;border-radius:7px}#status{font-size:12px;color:#bbb;flex:1;min-width:120px}#materials{position:absolute;right:10px;top:10px;width:min(250px,65vw);background:#222e;padding:10px;border-radius:12px;z-index:5;max-height:55vh;overflow:auto}#materials h3{margin:0 0 8px;font-size:14px}.matgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.mat{border:1px solid #555;background:#333;color:#fff;border-radius:8px;padding:6px;font-size:11px}.sw{height:38px;border-radius:6px;margin-bottom:4px;background-size:cover;background-position:center}#materials small{color:#aaa}
+</style>
+</head>
+<body><div id="app">
+<header>
+<label class="btn">Adicionar GLB/GLTF<input id="file" type="file" accept=".glb,.gltf" /></label>
+<button id="addBox">Módulo teste</button><button id="move">Mover</button><button id="rotate">Rotacionar</button><button id="delete">Excluir</button>
+<input id="texture" type="file" accept="image/*"/><label class="btn" for="texture">+ Material MDF</label>
+<span id="status">Toque em um módulo para editar.</span>
+</header>
+<div id="stage"><div id="materials"><h3>Materiais</h3><div class="matgrid" id="matgrid"></div><small>Selecione um móvel e toque no material. Você também pode adicionar uma imagem de MDF.</small></div></div>
+<div id="panel">
+<label>Largura (m)<input id="sx" type="number" step="0.05" value="1"></label>
+<label>Altura (m)<input id="sy" type="number" step="0.05" value="1"></label>
+<label>Profundidade (m)<input id="sz" type="number" step="0.05" value="1"></label>
+<label>Posição X (m)<input id="px" type="number" step="0.05" value="0"></label>
+<label>Posição Y (m)<input id="py" type="number" step="0.05" value="0"></label>
+<label>Posição Z (m)<input id="pz" type="number" step="0.05" value="0"></label>
+<label>Rotação Y (°)<input id="ry" type="number" step="5" value="0"></label>
+</div></div>
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.170.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.170.0/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {TransformControls} from 'three/addons/controls/TransformControls.js';
+const stage=document.querySelector('#stage'), status=document.querySelector('#status');
+const renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:true}); renderer.setPixelRatio(Math.min(devicePixelRatio,2)); renderer.shadowMap.enabled=true; stage.appendChild(renderer.domElement);
+const scene=new THREE.Scene(); scene.background=new THREE.Color(0xdedbd3);
+const camera=new THREE.PerspectiveCamera(50,1,.01,100); camera.position.set(4,3,5);
+const controls=new OrbitControls(camera,renderer.domElement); controls.enableDamping=true; controls.target.set(0,1,0);
+const transform=new TransformControls(camera,renderer.domElement); scene.add(transform); transform.setMode('translate'); transform.addEventListener('dragging-changed',e=>controls.enabled=!e.value); transform.addEventListener('objectChange',()=>syncFields());
+scene.add(new THREE.HemisphereLight(0xffffff,0x666666,2)); const dl=new THREE.DirectionalLight(0xffffff,3); dl.position.set(3,6,4); dl.castShadow=true; scene.add(dl);
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(20,20),new THREE.MeshStandardMaterial({color:0xb8b2a7,roughness:.9})); floor.rotation.x=-Math.PI/2; floor.receiveShadow=true; scene.add(floor);
+const grid=new THREE.GridHelper(20,40,0x777777,0xaaaaaa); grid.position.y=.002; scene.add(grid);
+let selected=null; const ray=new THREE.Raycaster(), pointer=new THREE.Vector2();
+const materialDefs=[
+ {name:'Branco',color:'#f4f4f1'},{name:'Areia',color:'#d8c7aa'},{name:'Cinza',color:'#8d8d89'},
+ {name:'Preto',color:'#252525'},{name:'Carvalho',color:'#b88a55'},{name:'Freijó',color:'#a87543'}
+];
+const matgrid=document.querySelector('#matgrid');
+function applyMaterial(mat){if(!selected){status.textContent='Selecione um móvel primeiro.';return}selected.traverse(o=>{if(o.isMesh){o.material=mat.clone();o.material.needsUpdate=true}});status.textContent='Material aplicado ao módulo selecionado.'}
+function addMaterialButton(name,css,onClick){const b=document.createElement('button');b.className='mat';const sw=document.createElement('div');sw.className='sw';sw.style.background=css;b.append(sw,document.createTextNode(name));b.onclick=onClick;matgrid.appendChild(b)}
+materialDefs.forEach(m=>addMaterialButton(m.name,m.color,()=>applyMaterial(new THREE.MeshStandardMaterial({color:m.color,roughness:.65}))));
+
+function fit(){const r=stage.getBoundingClientRect(); renderer.setSize(r.width,r.height,false); camera.aspect=r.width/r.height; camera.updateProjectionMatrix()} addEventListener('resize',fit); fit();
+function syncFields(){if(!selected)return;document.querySelector('#sx').value=selected.scale.x.toFixed(2);document.querySelector('#sy').value=selected.scale.y.toFixed(2);document.querySelector('#sz').value=selected.scale.z.toFixed(2);document.querySelector('#px').value=selected.position.x.toFixed(2);document.querySelector('#py').value=selected.position.y.toFixed(2);document.querySelector('#pz').value=selected.position.z.toFixed(2);document.querySelector('#ry').value=THREE.MathUtils.radToDeg(selected.rotation.y).toFixed(1)}
+function select(o){selected=o; status.textContent=o?'Módulo selecionado. Use Mover/Rotacionar ou os campos abaixo.':'Nenhum módulo selecionado.'; transform.detach(); if(o){transform.attach(o);syncFields()}}
+function addBox(){const m=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),new THREE.MeshStandardMaterial({color:0xd9c5a0,roughness:.65}));m.position.set(0,.5,0);m.castShadow=m.receiveShadow=true;m.userData.editable=true;scene.add(m);select(m)}
+document.querySelector('#addBox').onclick=addBox;
+document.querySelector('#move').onclick=()=>{transform.setMode('translate');status.textContent='Modo mover: arraste as setas do objeto.'};
+document.querySelector('#rotate').onclick=()=>{transform.setMode('rotate');status.textContent='Modo rotacionar: arraste os arcos do objeto.'};
+renderer.domElement.addEventListener('pointerdown',e=>{const r=renderer.domElement.getBoundingClientRect();pointer.x=((e.clientX-r.left)/r.width)*2-1;pointer.y=-((e.clientY-r.top)/r.height)*2+1;ray.setFromCamera(pointer,camera);const hits=ray.intersectObjects(scene.children,true).filter(h=>h.object!==floor&&h.object!==grid);if(hits.length){let o=hits[0].object;while(o.parent!==scene&&o.parent)o=o.parent;select(o.userData.editable?o:hits[0].object)} });
+['sx','sy','sz'].forEach((id,i)=>document.querySelector('#'+id).oninput=e=>{if(!selected)return;selected.scale[['x','y','z'][i]]=Math.max(.05,+e.target.value||.05); if(i===1 && selected.geometry) selected.position.y=selected.scale.y/2});
+['px','py','pz'].forEach((id,i)=>document.querySelector('#'+id).oninput=e=>{if(!selected)return;selected.position[['x','y','z'][i]]=+e.target.value||0});
+document.querySelector('#ry').oninput=e=>{if(!selected)return;selected.rotation.y=THREE.MathUtils.degToRad(+e.target.value||0)};
+document.querySelector('#delete').onclick=()=>{if(selected){transform.detach();scene.remove(selected);select(null)}};
+document.querySelector('#file').onchange=e=>{const f=e.target.files[0];if(!f)return;const url=URL.createObjectURL(f);new GLTFLoader().load(url,g=>{g.scene.userData.editable=true;g.scene.traverse(o=>{if(o.isMesh){o.castShadow=o.receiveShadow=true}});scene.add(g.scene);select(g.scene);URL.revokeObjectURL(url)},undefined,err=>status.textContent='Erro ao abrir modelo: '+err.message)};
+document.querySelector('#texture').onchange=e=>{const f=e.target.files[0];if(!f)return;if(!selected){status.textContent='Selecione um móvel antes de adicionar o material.';e.target.value='';return}const url=URL.createObjectURL(f);new THREE.TextureLoader().load(url,t=>{t.colorSpace=THREE.SRGBColorSpace;t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(1,1);const mat=new THREE.MeshStandardMaterial({map:t,roughness:.65});applyMaterial(mat);addMaterialButton(f.name,'url('+url+')',()=>applyMaterial(mat));status.textContent='Material adicionado: '+f.name},undefined,err=>status.textContent='Erro ao carregar material: '+err.message);e.target.value=''};
+addBox(); (function loop(){requestAnimationFrame(loop);controls.update();renderer.render(scene,camera)})();
+</script></body></html>
